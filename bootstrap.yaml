@@ -1,0 +1,60 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-cluster-kind
+  namespace: argo-cd
+  labels:
+    app.kubernetes.io/part-of: argocd
+    argocd.argoproj.io/secret-type: cluster
+
+    argo_cd_enabled: "true"
+    argo_rollouts_enabled: "true"
+    ingress_nginx_enabled: "true"
+
+  annotations:
+    gitops_repo_url: "https://github.com/thomasklinger1234/gitops.git"
+    gitops_repo_revision: "HEAD"
+    gitops_repo_basepath: ""
+
+type: Opaque
+stringData:
+  name: "kind"
+  server: "https://kubernetes.default.svc"
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: bootstrap
+  namespace: argo-cd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - clusters:
+        selector:
+          matchExpressions:
+            - key: akuity.io/argo-cd-cluster-name
+              operator: NotIn
+              values: [in-cluster]
+  template:
+    metadata:
+      name: '{{.name}}-bootstrap'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.gitops_repo_url}}'
+        path: '{{.metadata.annotations.gitops_repo_basepath}}'
+        targetRevision: '{{.metadata.annotations.gitops_repo_revision}}'
+        directory:
+          recurse: true
+          exclude: exclude/*
+      destination:
+        name: '{{.name}}'
+        namespace: 'argo-cd'
+      syncPolicy:
+        automated:
+          prune: true

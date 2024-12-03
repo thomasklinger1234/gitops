@@ -1,0 +1,55 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-ingress-nginx
+  namespace: argo-cd
+spec:
+  goTemplate: true
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  generators:
+    - merge:
+        mergeKeys: [server]
+        generators:
+          - clusters:
+              values:
+                chartName: ingress-nginx
+                chartNamespace: ingress-nginx
+                chartVersion: 4.10.0
+                chartRepository: https://kubernetes.github.io/ingress-nginx
+              selector:
+                matchExpressions:
+                  - key: ingress_nginx_enabled
+                    operator: In
+                    values: ['true']
+  template:
+    metadata:
+      name: {{.name}}-platform-{{.values.chartName}}
+    spec:
+      project: default
+      sources:
+        - repoURL: '{{.metadata.annotations.gitops_repo_url}}'
+          targetRevision: '{{.metadata.annotations.gitops_repo_revision}}'
+          ref: values
+        - chart: '{{.values.chartName}}'
+          repoURL: '{{.values.chartRepository}}'
+          targetRevision: '{{.values.chartVersion}}'
+          helm:
+            releaseName: '{{.values.chartName}}'
+            ignoreMissingValueFiles: true
+            valueFiles:
+              - $values/{{.metadata.annotations.gitops_repo_basepath}}charts/addons/{{.values.chartName}}/values.yaml
+            values: |
+              controller:
+                service:
+                  type: {{default "LoadBalancer" .metadata.annotations.ingress_nginx_service_type}}
+      destination:
+        name: '{{.name}}'
+        namespace: '{{.values.chartNamespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true # Big CRDs.
